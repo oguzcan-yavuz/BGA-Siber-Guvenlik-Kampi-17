@@ -3,6 +3,8 @@
 - 192.168.1.128 SYSTEM haklarında Meterpreter oturumu elde ediniz.
 --edemedi--
 
+**- ÇÖZÜM:**
+
 		=> nmap -A 192.168.1.128 -vv
 
 		PORT     STATE SERVICE      REASON          VERSION
